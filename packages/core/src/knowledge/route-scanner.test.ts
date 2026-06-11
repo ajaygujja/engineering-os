@@ -370,10 +370,115 @@ final appRouter = GoRouter(
       const paths = routes.map((r) => r.path).sort();
       expect(paths).toContain('/sign-in'); // resolved from RoutePaths.signIn
       expect(paths).toContain('/');        // resolved from RoutePaths.home
-      expect(paths).toContain('edit');     // inline literal still works
+      expect(paths).toContain('/edit');    // nested under '/' parent → full path
 
       const signIn = routes.find((r) => r.path === '/sign-in')!;
       expect(signIn.handler).toBe('sign-in'); // name resolved from Routes.signIn
+    });
+
+    it('should build full nested paths from lume-style real app router', () => {
+      writeFile('pubspec.yaml', 'name: lume\ndependencies:\n  go_router: ^16.2.4\n');
+      writeFile('lib/core/router/app_router.dart', `
+class Routes {
+  static const splash = 'splash';
+  static const signIn = 'sign-in';
+  static const home = 'home';
+  static const workLogDetail = 'work-log-detail';
+  static const workLogCreate = 'work-log-create';
+  static const workLogEdit = 'work-log-edit';
+}
+class RoutePaths {
+  static const splash = '/splash';
+  static const signIn = '/sign-in';
+  static const home = '/';
+  static const workLogDetail = '/work-log-detail';
+  static const workLogCreate = '/work-logs/new';
+}
+final appRouter = GoRouter(
+  initialLocation: RoutePaths.splash,
+  routes: [
+    GoRoute(
+      path: RoutePaths.splash,
+      name: Routes.splash,
+      pageBuilder: (context, state) => MaterialPage(
+        key: state.pageKey,
+        child: const SplashPage(),
+      ),
+    ),
+    GoRoute(
+      path: RoutePaths.signIn,
+      name: Routes.signIn,
+      pageBuilder: (context, state) {
+        final error = state.uri.queryParameters['error'];
+        return MaterialPage(
+          key: state.pageKey,
+          child: SignInPage(error: error),
+        );
+      },
+    ),
+    GoRoute(
+      path: RoutePaths.home,
+      name: Routes.home,
+      pageBuilder: (context, state) => MaterialPage(
+        key: state.pageKey,
+        child: const HomeScreen(),
+      ),
+      routes: [
+        GoRoute(
+          path: RoutePaths.workLogCreate,
+          name: Routes.workLogCreate,
+          pageBuilder: (context, state) => MaterialPage(
+            key: state.pageKey,
+            child: const WorkLogCreateScreen(),
+          ),
+        ),
+      ],
+    ),
+    GoRoute(
+      path: RoutePaths.workLogDetail,
+      name: Routes.workLogDetail,
+      pageBuilder: (context, state) {
+        final workLog = state.extra as WorkLog?;
+        if (workLog == null) {
+          return const MaterialPage(child: ErrorPage(error: 'Work log not found'));
+        }
+        return MaterialPage(
+          key: state.pageKey,
+          child: WorkLogDetailScreen(workLog: workLog),
+        );
+      },
+      routes: [
+        GoRoute(
+          path: 'edit',
+          name: Routes.workLogEdit,
+          pageBuilder: (context, state) {
+            final workLog = state.extra as WorkLog?;
+            return MaterialPage(
+              key: state.pageKey,
+              child: WorkLogEditScreen(workLog: workLog),
+            );
+          },
+        ),
+      ],
+    ),
+  ],
+);
+`);
+      const routes = new RouteScanner(tmpDir).scan();
+      const paths = routes.map((r) => r.path);
+
+      // Top-level routes unchanged
+      expect(paths).toContain('/splash');
+      expect(paths).toContain('/sign-in');
+      expect(paths).toContain('/');
+      expect(paths).toContain('/work-log-detail');
+
+      // Child with absolute path constant — stays absolute
+      expect(paths).toContain('/work-logs/new');
+
+      // Child with relative path 'edit' — must resolve to full path
+      expect(paths).toContain('/work-log-detail/edit');
+      expect(paths).not.toContain('edit'); // bare 'edit' must not appear
     });
 
     it('should detect TypedGoRoute annotation paths', () => {

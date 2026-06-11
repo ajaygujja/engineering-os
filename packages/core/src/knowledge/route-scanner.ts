@@ -617,28 +617,54 @@ export class RouteScanner {
     // declare paths/names as `static const x = '/foo'` in a constants class.
     const consts = this.buildDartConstMap(content);
 
-    // Matches GoRoute(...), TypedGoRoute<X>(...), and @TypedGoRoute<X>(...) annotations.
+    // Net open-paren count at each GoRoute position determines nesting depth —
+    // deeper parens = child route. pageBuilder lambdas use balanced parens so
+    // they don't shift the depth of subsequent siblings.
     const ctorRe = /(?:Typed)?GoRoute\s*(?:<\s*\w+\s*>\s*)?\(/g;
+    const collected: Array<{ depth: number; window: string; line: number }> = [];
     let m: RegExpExecArray | null;
     while ((m = ctorRe.exec(content)) !== null) {
-      const window = content.slice(m.index, m.index + 400);
-      const routePath = this.extractDartValue(window, 'path', consts);
+      let depth = 0;
+      for (let i = 0; i < m.index; i++) {
+        if (content[i] === '(') depth++;
+        else if (content[i] === ')') depth--;
+      }
+      collected.push({
+        depth,
+        window: content.slice(m.index, m.index + 400),
+        line: content.slice(0, m.index).split('\n').length,
+      });
+    }
+
+    // Parent-path stack: pop entries at depth >= current before prefixing,
+    // which handles both siblings (same depth) and closed ancestors (deeper).
+    const stack: Array<{ depth: number; fullPath: string }> = [];
+    for (const entry of collected) {
+      const routePath = this.extractDartValue(entry.window, 'path', consts);
       if (routePath === null) continue;
 
-      const name = this.extractDartValue(window, 'name', consts);
-      const builderMatch = window.match(
+      while (stack.length > 0 && stack[stack.length - 1].depth >= entry.depth) {
+        stack.pop();
+      }
+
+      const parentPath = stack.length > 0 ? stack[stack.length - 1].fullPath : '';
+      const fullPath = this.joinPaths(parentPath, routePath);
+
+      const name = this.extractDartValue(entry.window, 'name', consts);
+      const builderMatch = entry.window.match(
         /(?:builder|pageBuilder)\s*:\s*\([^)]*\)\s*=>\s*(?:const\s+)?(\w+)/
       );
-      const line = content.slice(0, m.index).split('\n').length;
 
       routes.push({
         method: 'SCREEN',
-        path: routePath,
-        file,
-        line,
+        path: fullPath,
+        file: file,
+        line: entry.line,
         handler: name ?? builderMatch?.[1],
         framework: 'gorouter',
       });
+
+      stack.push({ depth: entry.depth, fullPath });
     }
     return routes;
   }

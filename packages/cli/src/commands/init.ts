@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { RepositoryIndexer, ArchitectureDiscovery, ArchitectureStore, MetadataStore, GraphStore, GraphLinker, ContractDiscovery, RepoRegistry, AiContextGenerator, WorkspaceLoader, GlobalRegistry } from '@engineering-os/core';
-import { DecisionStore } from '@engineering-os/core';
+import { DecisionStore, AdrImporter } from '@engineering-os/core';
 import { getDefaultConfig, writeConfig } from '../utils/config.js';
 
 // ANSI color codes
@@ -167,6 +167,22 @@ export const initCommand = new Command('init')
       console.log(`${CHECK} Architecture discovered`);
     } catch (error) {
       console.log(`${YELLOW}⚠ Architecture discovery failed: ${(error as Error).message}${RESET}`);
+    }
+
+    // Import documented decisions (ADRs) from Markdown docs
+    console.log(`${DIM}Importing decisions...${RESET}`);
+    let decisionsImported = 0;
+    try {
+      const decisionStore = new DecisionStore(path.join(rootPath, '.eos', 'knowledge', 'decisions'));
+      const imported = await new AdrImporter(rootPath).importInto(decisionStore);
+      decisionsImported = imported.length;
+      if (decisionsImported > 0) {
+        console.log(`${CHECK} Imported ${decisionsImported} decision(s) from docs`);
+      } else {
+        console.log(`${CHECK} No documented decisions found ${DIM}(skipped)${RESET}`);
+      }
+    } catch (error) {
+      console.log(`${YELLOW}⚠ Decision import failed: ${(error as Error).message}${RESET}`);
     }
 
     // Run contract discovery + graph linking (with monorepo workspace auto-discovery)

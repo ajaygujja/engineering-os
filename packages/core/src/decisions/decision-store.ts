@@ -75,22 +75,42 @@ export class DecisionStore {
   }
 
   /**
-   * Search decisions by keyword in title, context, or rationale.
+   * Search decisions by keyword.
+   *
+   * The query is tokenized into words and matched against the decision's
+   * title, context, rationale, decision text, consequences, and tags. A
+   * decision matches if **any** token appears, and results are ranked by the
+   * number of distinct matching tokens (most relevant first). This token-based
+   * approach means natural-language queries like "why BLoC" or "BLoC state
+   * management" match, not just exact substrings.
+   *
+   * @param query Free-text query; an empty/whitespace query returns all decisions.
+   * @returns Matching decisions, most relevant first.
    */
   async search(query: string): Promise<Decision[]> {
     const allDecisions = await this.list();
-    const lowerQuery = query.toLowerCase();
+    const tokens = query.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (tokens.length === 0) return allDecisions;
 
-    return allDecisions.filter((d) => {
-      const title = (d.title || '').toLowerCase();
-      const context = (d.context || '').toLowerCase();
-      const rationale = (d.rationale || '').toLowerCase();
-      return (
-        title.includes(lowerQuery) ||
-        context.includes(lowerQuery) ||
-        rationale.includes(lowerQuery)
-      );
-    });
+    return allDecisions
+      .map((d) => {
+        const haystack = [
+          d.title,
+          d.context,
+          d.rationale,
+          d.decision,
+          ...(d.consequences || []),
+          ...(d.tags || []),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        const score = tokens.reduce((n, token) => (haystack.includes(token) ? n + 1 : n), 0);
+        return { decision: d, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.decision);
   }
 
   /**

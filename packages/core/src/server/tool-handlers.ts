@@ -624,11 +624,20 @@ export class ToolHandlers {
       lines.push(`**Status:** ${d.status}`);
       lines.push(`**Date:** ${(d as any).date || 'unknown'}`);
       lines.push('');
-      lines.push(`**Context:** ${d.context}`);
-      lines.push('');
+      if (d.context) {
+        lines.push(`**Context:** ${d.context}`);
+        lines.push('');
+      }
       lines.push(`**Decision:** ${d.decision || d.rationale}`);
       lines.push('');
       lines.push(`**Rationale:** ${d.rationale}`);
+      if (d.consequences && d.consequences.length > 0) {
+        lines.push('');
+        lines.push(`**Trade-offs / Consequences:**`);
+        for (const c of d.consequences) {
+          lines.push(`- ${c}`);
+        }
+      }
       lines.push('---');
       lines.push('');
     }

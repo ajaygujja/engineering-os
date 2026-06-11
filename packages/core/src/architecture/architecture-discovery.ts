@@ -493,6 +493,37 @@ export class ArchitectureDiscovery {
       } as Convention);
     }
 
+    // Flutter: infer stack conventions from pubspec dependencies
+    conventions.push(...(await this.inferFlutterConventions()));
+
+    return conventions;
+  }
+
+  /**
+   * Infer Flutter stack conventions (state management, DI, routing) from
+   * pubspec.yaml dependencies. Returns [] for non-Flutter projects.
+   */
+  private async inferFlutterConventions(): Promise<Convention[]> {
+    const deps = await this.readPubspecDependencies();
+    if (deps === null) return [];
+
+    const conventions: Convention[] = [];
+    const has = (...names: string[]) => names.some((n) => deps.has(n));
+    const push = (name: string, rule: string) =>
+      conventions.push({ name, description: rule, rule, examples: [] } as Convention);
+
+    // State management — report the one in use (first match wins).
+    if (has('flutter_bloc', 'bloc')) push('state-management', 'Use BLoC/Cubit (flutter_bloc) for state management');
+    else if (has('flutter_riverpod', 'riverpod', 'hooks_riverpod')) push('state-management', 'Use Riverpod for state management');
+    else if (has('provider')) push('state-management', 'Use Provider/ChangeNotifier for state management');
+    else if (has('get', 'getx')) push('state-management', 'Use GetX for state management');
+    else if (has('flutter_mobx', 'mobx')) push('state-management', 'Use MobX for state management');
+
+    if (has('get_it', 'injectable')) push('dependency-injection', 'Register dependencies via get_it / injectable');
+    if (has('go_router')) push('routing', 'Define navigation with go_router');
+    else if (has('auto_route')) push('routing', 'Define navigation with auto_route');
+    if (has('freezed')) push('models', 'Use freezed for immutable data models and unions');
+
     return conventions;
   }
 

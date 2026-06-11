@@ -80,6 +80,35 @@ dev_dependencies:
     expect(names).toContain('shared-shared');
   });
 
+  it('infers stack conventions from pubspec (state-mgmt, DI, routing)', async () => {
+    scaffoldFlutterApp(); // pubspec has flutter_bloc
+    const conventions = await discovery.inferConventions();
+    const byName = Object.fromEntries(conventions.map((c) => [c.name, c.rule]));
+
+    expect(byName['state-management']).toMatch(/bloc/i);
+    // scaffold deps: firebase_auth + flutter_bloc only — add DI/routing variant below
+  });
+
+  it('reports riverpod + DI + routing conventions', async () => {
+    writeFile('lib/main.dart', 'void main() {}');
+    writeFile('pubspec.yaml', `name: alt
+dependencies:
+  hooks_riverpod: ^2.0.0
+  get_it: ^8.0.0
+  injectable: ^2.0.0
+  go_router: ^16.0.0
+  freezed_annotation: ^2.0.0
+  freezed: ^2.0.0
+`);
+    const byName = Object.fromEntries(
+      (await discovery.inferConventions()).map((c) => [c.name, c.rule])
+    );
+    expect(byName['state-management']).toMatch(/riverpod/i);
+    expect(byName['dependency-injection']).toMatch(/get_it/i);
+    expect(byName['routing']).toMatch(/go_router/i);
+    expect(byName['models']).toMatch(/freezed/i);
+  });
+
   it('infers snake_case naming and top-level test directory', async () => {
     scaffoldFlutterApp();
     const conventions = await discovery.inferConventions();
